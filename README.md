@@ -1,7 +1,14 @@
 # batch
 Micro Batch processor written in Go.
 
-# Usage
+## Things that could be improved
+
+- Add timeout to `Shutdown()` instead of blocking fully 
+- Make the size of channel buffer configurable
+- Add ability to automatically process batches once there are enough jobs, if there is no 
+interval configured
+
+## Usage
 
 Batch processing is performed by creating a `Dispatcher` with a configured `Interval` and `BatchSize`.
 
