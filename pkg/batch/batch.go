@@ -97,6 +97,9 @@ func (d *Dispatcher) Run() chan JobResult {
 
 // Submit adds a Job to be handled by the BatchProcessor
 func (d *Dispatcher) Submit(j Job) error {
+	d.busy.Lock()         // Lock before accessing shared resource
+	defer d.busy.Unlock() // Ensure the lock is released after function execution
+
 	if d.done {
 		return errors.New("Dispatcher is shutting down")
 	}
