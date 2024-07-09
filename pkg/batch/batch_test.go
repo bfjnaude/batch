@@ -44,13 +44,11 @@ func Test_Dispatcher_LifeTime(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	count := 0
 	results := make([]JobResult, 0)
 	go func() {
 		for result := range resultChan {
 			results = append(results, result)
 			assert.NotEmpty(t, result)
-			count = count + 1
 		}
 		wg.Done()
 	}()
@@ -61,5 +59,65 @@ func Test_Dispatcher_LifeTime(t *testing.T) {
 
 	// Then
 	assert.Equal(t, len(results), batchSize*batches)
-	assert.Equal(t, count, batchSize*batches)
+}
+
+// Test that Dispatcher correctly processes a single job
+func Test_Dispatcher_ProcessSingleJob(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	bp := NewMockBatchProcessor(ctrl)
+	batchSize := 1
+	interval := time.Millisecond * 100
+	d := NewDispatcher(bp, Config{
+		BatchSize: batchSize,
+		Interval:  interval,
+	})
+
+	job := NewMockJob(ctrl)
+	jobID := uuid.NewString()
+	// Expect GetID to be called, but the exact number of times is determined by the bp.Process call
+	job.EXPECT().GetID().Return(jobID).AnyTimes()
+
+	// Use DoAndReturn to explicitly call job.GetID() when bp.Process is invoked
+	bp.EXPECT().Process(gomock.Any()).DoAndReturn(func(jobs []Job) []JobResult {
+		// Simulate processing logic where job.GetID() is called
+		for _, job := range jobs {
+			_ = job.GetID() // Simulate the call to GetID within the processing logic
+		}
+		return []JobResult{
+			{JobID: jobID},
+		}
+	}).Times(1)
+
+	resultChan := d.Run()
+	d.Submit(job)
+
+	select {
+	case result := <-resultChan:
+		assert.Equal(t, jobID, result.JobID)
+	case <-time.After(time.Second * 1):
+		t.Fatal("Expected result was not received in time")
+	}
+
+	d.Shutdown()
+}
+
+// Test Dispatcher Submit after Shutdown
+func Test_Dispatcher_SubmitAfterShutdown(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	bp := NewMockBatchProcessor(ctrl)
+	d := NewDispatcher(bp, Config{
+		BatchSize: 1,
+		Interval:  time.Millisecond * 100,
+	})
+
+	d.Shutdown() // Shutdown before submitting jobs
+
+	job := NewMockJob(ctrl)
+	err := d.Submit(job)
+
+	assert.NotNil(t, err, "Expected error when submitting job after shutdown")
 }
